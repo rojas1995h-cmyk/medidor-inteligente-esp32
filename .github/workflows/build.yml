@@ -13,7 +13,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Instalar Java 17
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
@@ -30,8 +30,46 @@ jobs:
           cp lib/main.dart app_temp/lib/main.dart
           cp AndroidManifest.xml app_temp/android/app/src/main/AndroidManifest.xml
           cd app_temp
-          sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 21/g' android/app/build.gradle.kts 2>/dev/null || true
-          sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 21/g' android/app/build.gradle 2>/dev/null || true
+          
+          # Habilitar core library desugaring requerido por flutter_local_notifications
+          python3 -c '
+          import os
+
+          # Compatibilidad build.gradle (Groovy)
+          path_groovy = "android/app/build.gradle"
+          if os.path.exists(path_groovy):
+              with open(path_groovy, "r") as f:
+                  txt = f.read()
+              txt = txt.replace("compileSdkVersion flutter.compileSdkVersion", "compileSdkVersion 34")
+              txt = txt.replace("minSdkVersion flutter.minSdkVersion", "minSdkVersion 21")
+              if "coreLibraryDesugaringEnabled" not in txt:
+                  txt = txt.replace("compileOptions {", "compileOptions {\n        coreLibraryDesugaringEnabled true")
+              if "coreLibraryDesugaring" not in txt:
+                  if "dependencies {" in txt:
+                      txt = txt.replace("dependencies {", "dependencies {\n    coreLibraryDesugaring \"com.android.tools:desugar_jdk_libs:2.0.4\"")
+                  else:
+                      txt += "\ndependencies {\n    coreLibraryDesugaring \"com.android.tools:desugar_jdk_libs:2.0.4\"\n}\n"
+              with open(path_groovy, "w") as f:
+                  f.write(txt)
+
+          # Compatibilidad build.gradle.kts (Kotlin DSL)
+          path_kts = "android/app/build.gradle.kts"
+          if os.path.exists(path_kts):
+              with open(path_kts, "r") as f:
+                  txt = f.read()
+              txt = txt.replace("compileSdk = flutter.compileSdkVersion", "compileSdk = 34")
+              txt = txt.replace("minSdk = flutter.minSdkVersion", "minSdk = 21")
+              if "isCoreLibraryDesugaringEnabled" not in txt:
+                  txt = txt.replace("compileOptions {", "compileOptions {\n        isCoreLibraryDesugaringEnabled = true")
+              if "coreLibraryDesugaring" not in txt:
+                  if "dependencies {" in txt:
+                      txt = txt.replace("dependencies {", "dependencies {\n    coreLibraryDesugaring(\"com.android.tools:desugar_jdk_libs:2.0.4\")")
+                  else:
+                      txt += "\ndependencies {\n    coreLibraryDesugaring(\"com.android.tools:desugar_jdk_libs:2.0.4\")\n}\n"
+              with open(path_kts, "w") as f:
+                  f.write(txt)
+          '
+          
           flutter pub get
           flutter build apk --release
 
